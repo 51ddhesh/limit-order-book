@@ -4,3 +4,9 @@ A limit order book (LOB) is a dynamic, high performance system that records and 
 
 
 This is a C++ implementation of a high performance, low latency limit order book.
+
+
+---
+
+### LICENSE
+This project is licensed under the Boost Software License (BSL 1). Check the [LICENSE](./LICENSE) file or visit the official [Boost Software License](https://www.boost.org/LICENSE_1_0.txt) page.
