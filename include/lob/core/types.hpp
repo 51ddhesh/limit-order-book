@@ -38,19 +38,21 @@ namespace lob {
    * └────────────────────────────────────┘ 
 */
 namespace detail {
-    struct PriceTag{};
-    struct QuantityTag{};
-    struct OrderIDTag{};
-    struct TimestampTag{};
+
+struct PriceTag{};
+struct QuantityTag{};
+struct OrderIDTag{};
+struct TimestampTag{};
+
 } // namespace lob::detail
 
 template <typename Tag, typename Underlying = std::int64_t>
-requires std::is_arithmetic_v<Underlying>
+    requires std::is_arithmetic_v<Underlying>
 class StrongType {
-    private:
+private:
     Underlying value_{};
     
-    public:
+public:
     using underlying_type = Underlying;
     using tag_type = Tag;
     
@@ -100,19 +102,12 @@ concept StrongNumeric = requires (T t) {
 * └─────────────────────┘ 
 */
 
-/// Fixed point price. raw() == real_price * 10 ^ SCALE 
 using Price = StrongType<detail::PriceTag, std::int64_t>;
+using Quantity = StrongType<detail::QuantityTag, std::uint64_t>;
+using OrderID = StrongType<detail::OrderIDTag, std::uint64_t>;
+using Timestamp = StrongType<detail::TimestampTag,std::uint64_t>;
 
-/// Quantity. Always >= 0
-using Quantity = StrongType<detail::QuantityTag, std::int64_t>;
-
-/// Unique. Monotonically increasing order identifier.
-using OrderID = StrongType<detail::OrderIDTag, std::int64_t>;
-
-/// TSC
-using Timestamp = StrongType<detail::TimestampTag, std::int64_t>;
-
-
+    
 /* 
 * ┌─────────────────────┐
 * │ Quantity Arithmetic │
@@ -121,22 +116,21 @@ using Timestamp = StrongType<detail::TimestampTag, std::int64_t>;
 
 // Only the StrongType get arithmetic because the matching engine does quantity math on every fill.
 // Price arithmetic goes through named free functions below to keep intent explicit.
-
-constexpr Quantity operator+ (Quantity a, Quantity b) noexcept {
+constexpr Quantity operator+(Quantity a, Quantity b) noexcept {
     return Quantity{a.raw() + b.raw()};
 }
 
-constexpr Quantity operator- (Quantity a, Quantity b) noexcept {
+constexpr Quantity operator-(Quantity a, Quantity b) noexcept {
     return Quantity{a.raw() - b.raw()};
 }
 
-constexpr Quantity operator+= (Quantity a, Quantity b) noexcept {
-    a = a + b;
+constexpr Quantity& operator+=(Quantity& a, Quantity b) noexcept {
+    a = Quantity{a.raw() + b.raw()};
     return a;
 }
 
-constexpr Quantity operator-= (Quantity a, Quantity b) noexcept {
-    a = a - b;
+constexpr Quantity& operator-=(Quantity& a, Quantity b) noexcept {
+    a = Quantity{a.raw() - b.raw()};
     return a;
 }
 
