@@ -1,0 +1,41 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "dev",
+            "binaryDir": "${sourceDir}/build/dev",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "LOB_BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "-O3 -march=native -flto -DNDEBUG"
+            }
+        },
+        {
+            "name": "asan",
+            "binaryDir": "${sourceDir}/build/asan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Asan",
+                "LOB_BUILD_TESTS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "dev",     "configurePreset": "dev" },
+        { "name": "release", "configurePreset": "release" },
+        { "name": "asan",    "configurePreset": "asan" }
+    ],
+    "testPresets": [
+        {
+            "name": "dev",
+            "configurePreset": "dev",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}
