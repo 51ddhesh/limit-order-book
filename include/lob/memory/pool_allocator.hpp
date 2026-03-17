@@ -12,6 +12,10 @@
     Preallocates storage for N objects of type T at construction time.
 */
 
+
+#pragma once
+
+
 #include <cassert>
 #include <type_traits>
 #include <utility>
