@@ -115,7 +115,7 @@ using Timestamp = StrongType<detail::TimestampTag, std::int64_t>;
 
 /* 
 * ┌─────────────────────┐
-* │ Domain Type aliases │
+* │ Quantity Arithmetic │
 * └─────────────────────┘ 
 */
 
@@ -299,3 +299,63 @@ namespace price {
     
 } // namespace lob::price
 } // namespace lob
+
+/* 
+* ┌─────────┐
+* │ Hashing │
+* └─────────┘ 
+
+    - Required for OrderID in hash maps
+*/
+
+template <typename Tag, typename U>
+struct std::hash<lob::StrongType<Tag, U>> {
+    static std::size_t operator() (lob::StrongType<Tag, U> v) noexcept {
+        return std::hash<U>{}(v.raw());
+    }
+};
+
+
+/* 
+* ┌────────────┐
+* │ Formatting │
+* └────────────┘ 
+
+    * FOR DIAGNOSTICS AND LOGGING.
+    !! NEVER ON THE HOT PATH
+*/
+
+template <typename Tag, typename U>
+struct std::formatter<lob::StrongType<Tag, U>> : std::formatter<U> {
+    auto format(lob::StrongType<Tag, U> v, std::format_context& ctx) const {
+        return std::formatter<U>::format(v.raw(), ctx);
+    }
+};
+
+template <>
+struct std::formatter<lob::Side> : std::formatter<const char*> {
+    auto format(lob::Side s, std::format_context& ctx) const {
+        return std::formatter<const char*>::format(lob::to_string(s), ctx);
+    } 
+};
+
+template <>
+struct std::formatter<lob::OrderError> : std::formatter<const char*> {
+    auto format(lob::OrderError e, std::format_context& ctx) const {
+        return std::formatter<const char*>::format(lob::to_string(e), ctx);
+    }
+};
+
+template <>
+struct std::formatter<lob::TimeInForce> : std::formatter<const char*> {
+    auto format(lob::TimeInForce t, std::format_context& ctx) const {
+        return std::formatter<const char*>::format(lob::to_string(t), ctx);
+    }
+};
+
+template <>
+struct std::formatter<lob::OrderType> : std::formatter<const char*> {
+    auto format(lob::OrderType type, std::format_context& ctx) const {
+        return std::formatter<const char*>::format(lob::to_string(type), ctx);
+    }
+};
