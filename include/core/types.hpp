@@ -3,7 +3,6 @@
 // (See accompanying file LICENSE or copy at
 // http://www.boost.org/LICENSE_1_0.txt)
 
-
 /*
     lob::core::types
     Core vocabulary types for the Limit Order Book
@@ -37,7 +36,6 @@ namespace lob {
    * │ The tags live in the lob::detail,  │
    * │ users wouldn't spell them directly │
    * └────────────────────────────────────┘ 
-    
 */
 namespace detail {
     struct PriceTag{};
@@ -97,10 +95,9 @@ concept StrongNumeric = requires (T t) {
 
 
 /* 
-   * ┌─────────────────────┐
-   * │ Domain Type aliases │
-   * └─────────────────────┘ 
-    
+* ┌─────────────────────┐
+* │ Domain Type aliases │
+* └─────────────────────┘ 
 */
 
 /// Fixed point price. raw() == real_price * 10 ^ SCALE 
@@ -115,4 +112,190 @@ using OrderID = StrongType<detail::OrderIDTag, std::int64_t>;
 /// TSC
 using Timestamp = StrongType<detail::TimestampTag, std::int64_t>;
 
+
+/* 
+* ┌─────────────────────┐
+* │ Domain Type aliases │
+* └─────────────────────┘ 
+*/
+
+// Only the StrongType get arithmetic because the matching engine does quantity math on every fill.
+// Price arithmetic goes through named free functions below to keep intent explicit.
+
+constexpr Quantity operator+ (Quantity a, Quantity b) noexcept {
+    return Quantity{a.raw() + b.raw()};
+}
+
+constexpr Quantity operator- (Quantity a, Quantity b) noexcept {
+    return Quantity{a.raw() - b.raw()};
+}
+
+constexpr Quantity operator+= (Quantity a, Quantity b) noexcept {
+    a = a + b;
+    return a;
+}
+
+constexpr Quantity operator-= (Quantity a, Quantity b) noexcept {
+    a = a - b;
+    return a;
+}
+
+inline constexpr Quantity kZeroQuantity{0ULL};
+
+
+/* 
+* ┌──────┐
+* │ Side │
+* └──────┘ 
+*/
+
+enum class Side : std::uint8_t {
+    Buy = 0,
+    Sell = 1,
+};
+
+[[nodiscard]] constexpr Side opposite_side(Side s) noexcept {
+    return s == Side::Buy ? Side::Sell : Side::Buy;
+}
+
+[[nodiscard]] constexpr const char* to_string(Side s) noexcept {
+    return s == Side::Buy ? "Buy" : "Sell";
+}
+
+
+/* 
+* ┌───────────────┐
+* │ Time in Force │
+* └───────────────┘ 
+*/
+
+enum class TimeInForce : std::uint8_t {
+    GTC = 0, // GOod till Cancel
+    IOC = 1, // Immediate or Cancel
+    FOK = 2, // Fill or Kill
+    DAY = 3, // Day order
+};
+
+[[nodiscard]] constexpr const char* to_string(TimeInForce tif) noexcept {
+    switch (tif) {
+        case TimeInForce::GTC: return "GTC";
+        case TimeInForce::IOC: return "IOC";
+        case TimeInForce::FOK: return "FOK";
+        case TimeInForce::DAY: return "DAY";
+    }
+    
+    std::unreachable();
+}
+
+
+/* 
+* ┌────────────┐
+* │ Order Type │
+* └────────────┘ 
+*/
+
+enum class OrderType : std::uint8_t {
+    Limit = 0,
+    Market = 1,
+};
+
+[[nodiscard]] constexpr const char* to_string(OrderType type) noexcept {
+    switch (type) {
+        case OrderType::Limit: return "Limit";
+        case OrderType::Market: return "Market";
+    }
+    
+    std::unreachable();
+}
+
+/* 
+* ┌─────────────┐
+* │ Order Error │
+* └─────────────┘ 
+*/
+
+// Used with std::expected on the hot path
+
+enum class OrderError : std::uint8_t {
+    InvalidPrice,
+    InvalidQuantity,
+    InvalidOrderID,
+    DuplicateOrderID,
+    OrderNotFound,
+    BookFull,
+    PoolExhausted,
+    SelfTrade,
+    WouldNotFill, // FOK rejected
+};
+
+[[nodiscard]] constexpr const char* to_string(OrderError e) noexcept {
+    switch (e) {
+        case OrderError::InvalidPrice: return "InvalidPrice";
+        case OrderError::InvalidQuantity: return "InvalidQuantity";
+        case OrderError::InvalidOrderID: return "InvalidOrderID";
+        case OrderError::DuplicateOrderID: return "DuplicateOrderID";
+        case OrderError::OrderNotFound: return "OrderNotFound";
+        case OrderError::BookFull: return "BookFull";
+        case OrderError::PoolExhausted: return "PoolExhausted";
+        case OrderError::SelfTrade: return "SelfTrade";
+        case OrderError::WouldNotFill: return "WouldNotFill";
+    } 
+    
+    std::unreachable();
+}
+
+
+/* 
+* ┌─────────────────┐
+* │ Price Utilities │
+* └─────────────────┘ 
+*/
+
+/*
+Price is left out of arithmetic operators. The operations allowed are:
+- Comparison (with the spaceship operator <=>)
+- Tick Offset (add_ticks: returns a new price)
+- Conversion (from_double / to_double - on the cold path)
+*/ 
+
+namespace price {
+    // * ─── 10 ** 8 - eight decimal places ──────────────────────────────────── *
+    inline constexpr int kDefaultScale = 8;
+    
+    // * ─── Convert double to fixed point ───────────────────────────────────── *
+    // Done on the cold path
+    // Uses 'round half away from zero'
+    [[nodiscard]] constexpr Price from_double(double p, int scale = kDefaultScale) noexcept {
+        // Build the multiplier 
+        std::int64_t m = 1;
+        for (int i = 0; i < scale; i++) m *= 10;
+        
+        double scaled = p * static_cast<double>(m);
+        std::int64_t rounded = static_cast<std::int64_t>(scaled + (scaled >= 0.0 ? 0.5 : -0.5));
+        
+        return Price{rounded};
+    }
+    
+    // * ─── Convert fixed point to double ───────────────────────────────────── *
+    // For logging and displaying
+    // Done on the cold path
+    [[nodiscard]] constexpr double to_double(Price p, int scale = kDefaultScale) noexcept {
+        std::int64_t m = 1;
+        for (int i = 0; i < scale; i++) m *= 10;
+        
+        return static_cast<double>(p.raw()) / static_cast<double>(m);
+    }
+    
+    // * ─── Move a price by a number of ticks ───────────────────────────────── *
+    // Minimum price increments
+    [[nodiscard]] constexpr Price add_ticks(Price p, std::int64_t ticks) noexcept {
+        return Price{p.raw() + ticks};
+    }
+    
+    // * ─── Difference between two prices in raw ticks ──────────────────────── *
+    [[nodiscard]] constexpr std::int64_t ticksBetween(Price a, Price b) noexcept {
+        return a.raw() - b.raw();
+    }
+    
+} // namespace lob::price
 } // namespace lob
