@@ -17,3 +17,4 @@ function(lob_add_test name source)
 endfunction()
 
 lob_add_test(test_types unit/test_types.cpp)
+lob_add_test(test_pool_allocator unit/test_pool_allocator.cpp)
