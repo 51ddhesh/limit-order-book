@@ -374,4 +374,225 @@ TEST(PoolAllocator, InterleavedAllocDealloc) {
     check(0);
 }
 
+/* 
+* ┌────────────────────────────┐
+* │ 7. Test the owns() utility │
+* └────────────────────────────┘ 
+*/
+
+TEST(PoolAllocator, OwnsReturnsTrueForPoolPointers) {
+    PoolAllocator<Widget> pool(4);
+
+    auto* a = pool.construct(Widget{1, 2});
+    auto* b = pool.construct(Widget{3, 4});
+
+    EXPECT_TRUE(pool.owns(a));
+    EXPECT_TRUE(pool.owns(b));
+    
+    // !! owns() checks the address range, not whether the slot is currently allocated
+    pool.destroy(a);
+    EXPECT_TRUE(pool.owns(a));
+}
+
+TEST(PoolAllocator, OwnsReturnsFalseForForeignPointers) {
+    PoolAllocator<Widget> pool(4);
+
+    Widget stack_widget{10, 20};
+    auto* heap_widget = new Widget{30, 40};
+
+    EXPECT_FALSE(pool.owns(nullptr));
+    EXPECT_FALSE(pool.owns(&stack_widget));
+    EXPECT_FALSE(pool.owns(heap_widget));
+
+    delete heap_widget;
+}
+
+TEST(PoolAllocator, OwnsReturnsFalseForMisalignedPointer) {
+    PoolAllocator<Widget> pool(4);
+
+    auto* p = pool.construct();
+    // Offset by 1 byte — still within the storage block but not a valid slot
+    auto* misaligned = reinterpret_cast<Widget*>(
+        reinterpret_cast<std::byte*>(p) + 1);
+
+    EXPECT_FALSE(pool.owns(misaligned));
+    pool.destroy(p);
+}
+
+TEST(PoolAllocator, OwnsReturnsFalseForZeroCapacityPool) {
+    PoolAllocator<Widget> pool(0);
+    Widget w{1, 2};
+    EXPECT_FALSE(pool.owns(&w));
+    EXPECT_FALSE(pool.owns(nullptr));
+}
+
+/* 
+* ┌─────────────────────────────┐
+* │ 8. Test the reset() utility │
+* └─────────────────────────────┘ 
+*/
+
+TEST(PoolAllocator, ResetRestoresFullCapacity) {
+    PoolAllocator<Widget> pool(10);
+
+    for (int i = 0; i < 7; i++) {
+        pool.construct(Widget{i, 0});
+    }
+    EXPECT_EQ(pool.used(), 7u);
+
+    pool.reset();
+    EXPECT_EQ(pool.used(), 0u);
+    EXPECT_EQ(pool.available(), 10u);
+    EXPECT_FALSE(pool.full());
+}
+
+TEST(PoolAllocator, ResetAllowsFullReallocation) {
+    constexpr std::size_t kCap = 10;
+    PoolAllocator<Widget> pool(kCap);
+
+    // Fill, reset, refill: must succeed.
+    for (std::size_t i = 0; i < kCap; i++) pool.construct();
+    EXPECT_TRUE(pool.full());
+
+    pool.reset();
+
+    for (std::size_t i = 0; i < kCap; ++i) {
+        auto* p = pool.construct(Widget{static_cast<int>(i), 42});
+        ASSERT_NE(p, nullptr) << "Post-reset allocation failed at " << i;
+        EXPECT_EQ(p -> x, static_cast<int>(i));
+        EXPECT_EQ(p -> y, 42);
+    }
+    EXPECT_TRUE(pool.full());
+}
+
+TEST(PoolAllocator, ResetOnEmptyPoolIsNoOp) {
+    PoolAllocator<Widget> pool(5);
+    pool.reset();
+
+    EXPECT_EQ(pool.used(), 0u);
+    EXPECT_EQ(pool.available(), 5u);
+
+    auto* p = pool.construct(Widget{1, 1});
+    EXPECT_NE(p, nullptr);
+}
+
+/* 
+* ┌─────────────────────────────┐
+* │ 9. Test Object Construction │
+* └─────────────────────────────┘ 
+*/
+
+TEST(PoolAllocator, ConstructWithNoArgumentValueInitialization) {
+    PoolAllocator<Widget> pool(4);
+    
+    auto* p = pool.construct();
+    ASSERT_NE(p, nullptr);
+
+    EXPECT_EQ(p -> x, 0);
+    EXPECT_EQ(p -> y, 0);
+}
+
+TEST(PoolAllocator, ConstructWithAggregateInit) {
+    PoolAllocator<Widget> pool(4);
+
+    auto* p = pool.construct(Widget{42, 99});
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p -> x, 42);
+    EXPECT_EQ(p -> y, 99);
+}
+
+TEST(PoolAllocator, ConstructedObjectSurvivesUntilDestroy) {
+    PoolAllocator<Widget> pool(4);
+
+    auto* a = pool.construct(Widget{1, 10});
+    auto* b = pool.construct(Widget{2, 20});
+    auto* c = pool.construct(Widget{3, 30});
+
+    // All three are live simultaneously — no clobbering.
+    EXPECT_EQ(a -> x, 1); EXPECT_EQ(a->y, 10);
+    EXPECT_EQ(b -> x, 2); EXPECT_EQ(b->y, 20);
+    EXPECT_EQ(c -> x, 3); EXPECT_EQ(c->y, 30);
+
+    pool.destroy(b);
+
+    // a and c still intact after destroying b.
+    EXPECT_EQ(a -> x, 1); EXPECT_EQ(a->y, 10);
+    EXPECT_EQ(c -> x, 3); EXPECT_EQ(c->y, 30);
+}
+
+TEST(PoolAllocator, ConstructOverwritesPreviousData) {
+    PoolAllocator<Widget> pool(1);
+
+    auto* p = pool.construct(Widget{111, 222});
+    EXPECT_EQ(p -> x, 111);
+    pool.destroy(p);
+
+    auto* q = pool.construct(Widget{333, 444});
+    EXPECT_EQ(q -> x, 333);
+    EXPECT_EQ(q -> y, 444);
+}
+
+/* 
+* ┌─────────────────────┐
+* │ 10. Test Fat Object │
+* └─────────────────────┘ 
+*/
+
+TEST(PoolAllocator, WorksWithLargeObjects) {
+    PoolAllocator<FatObject> pool(100);
+
+    std::vector<FatObject*> ptrs;
+    for (std::size_t i = 0; i < 100; ++i) {
+        auto* p = pool.construct();
+        ASSERT_NE(p, nullptr);
+        p -> fields[0] = i;
+        p -> fields[11] = i * 100;
+        ptrs.push_back(p);
+    }
+    EXPECT_TRUE(pool.full());
+
+    // Verify no clobbering
+    for (std::size_t i = 0; i < 100; ++i) {
+        EXPECT_EQ(ptrs[i] -> fields[0], i);
+        EXPECT_EQ(ptrs[i] -> fields[11], i * 100);
+    }
+
+    // Free every other one, reallocate
+    for (std::size_t i = 0; i < 100; i += 2) {
+        pool.destroy(ptrs[i]);
+        ptrs[i] = nullptr;
+    }
+    EXPECT_EQ(pool.used(), 50u);
+
+    for (std::size_t i = 0; i < 100; i += 2) {
+        ptrs[i] = pool.construct();
+        ASSERT_NE(ptrs[i], nullptr);
+        ptrs[i] -> fields[0] = i + 1000;
+    }
+    EXPECT_TRUE(pool.full());
+
+    // Verify old ones intact, new ones correct
+    for (std::size_t i = 0; i < 100; ++i) {
+        if (i % 2 == 0) {
+            EXPECT_EQ(ptrs[i] -> fields[0], i + 1000);
+        } else {
+            EXPECT_EQ(ptrs[i] -> fields[0], i);
+            EXPECT_EQ(ptrs[i] -> fields[11], i * 100);
+        }
+    }
+}
+
+/* 
+* ┌──────────────────────┐
+* │ 11. Staic Guarantees │
+* └──────────────────────┘ 
+*/
+
+TEST(PoolAllocator, NonCopyableNonMovable) {
+    static_assert(!std::is_copy_constructible_v<PoolAllocator<Widget>>);
+    static_assert(!std::is_copy_assignable_v<PoolAllocator<Widget>>);
+    static_assert(!std::is_move_constructible_v<PoolAllocator<Widget>>);
+    static_assert(!std::is_move_assignable_v<PoolAllocator<Widget>>);
+}
+
 } // namespace lob::test
