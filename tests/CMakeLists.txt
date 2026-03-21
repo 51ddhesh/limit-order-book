@@ -23,3 +23,4 @@ endfunction()
 
 lob_add_test(test_types unit/test_types.cpp)
 lob_add_test(test_pool_allocator unit/test_pool_allocator.cpp)
+lob_add_test(test_price_level unit/test_price_level.cpp)
