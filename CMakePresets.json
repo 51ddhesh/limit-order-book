@@ -14,7 +14,7 @@
             "binaryDir": "${sourceDir}/build/release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_FLAGS": "-O3 -march=native -flto -DNDEBUG"
+                "CMAKE_CXX_FLAGS": "-O3 -march=native -flto -DNODEBUG"
             }
         },
         {
