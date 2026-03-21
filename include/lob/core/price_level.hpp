@@ -24,6 +24,9 @@
     Trivially destructible so it can live in a PoolAllocator pool.
 */
 
+#pragma once
+
+
 #include <cassert>
 #include <cstdint>
 #include "lob/core/order.hpp"
